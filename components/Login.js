@@ -1,10 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../contexts/auth";
-import { useRouter } from "next/router";
 import { FaGithub, FaGoogle, FaSpotify } from "react-icons/fa";
 export default function Login() {
-  const router = useRouter();
-
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

@@ -5,11 +5,10 @@ import { FaSignOutAlt } from "react-icons/fa";
 import { AiOutlineLogin } from "react-icons/ai";
 import { FcUpload } from "react-icons/fc";
 import { useAuth } from "../contexts/auth";
-import { useRouter } from "next/router"; // Import the useRouter hook
+import { usePathname } from "next/navigation";
 export default function Header({ session, signOut }) {
   const { handleLogin } = useAuth();
-  const router = useRouter(); // Use the useRouter hook to access the router object
-  const { pathname } = router; // Extract the pathname from the router object
+  const pathname = usePathname();
   return (
     <header className="">
       <Navbar collapseOnSelect expand="lg" bg="dark" variant="dark">

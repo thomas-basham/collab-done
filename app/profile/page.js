@@ -1,14 +1,18 @@
+'use client';
+
 import { useState, useEffect, useRef } from "react";
-import Avatar from "../components/Avatar";
-import { useAuth } from "../contexts/auth";
-import useResource from "../hooks/useResource";
-import Modal from "react-bootstrap/Modal";
-import SongFeed from "../components/SongFeed";
 import { Container } from "react-bootstrap";
-import { useRouter } from "next/router";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import Avatar from "../../components/Avatar";
+import { useAuth } from "../../contexts/auth";
+import useResource from "../../hooks/useResource";
+import Modal from "react-bootstrap/Modal";
+import SongFeed from "../../components/SongFeed";
+
 export default function ProfilePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [songPostData, SetSongPostData] = useState(null);
   const [genre, setGenre] = useState(null);
@@ -16,24 +20,6 @@ export default function ProfilePage() {
   const [needs, setNeeds] = useState(null);
   const [show, setShow] = useState(false);
   const [testMode, setTestMode] = useState(false);
-
-  useEffect(() => {
-    if (!session) {
-      router.push("/login");
-    }
-    if (session?.user.email == process.env.NEXT_PUBLIC_TEST_EMAIL) {
-      console.log("TEST USER!");
-      setTestMode(true);
-    }
-    if (router.query.error == "no-username") {
-      usernameRef.current.focus();
-
-      usernameRef.current.className = "border border-danger";
-      usernameRef.current.placeholder =
-        "enter a unique username to send a message";
-    }
-  });
-
   const usernameRef = useRef(null);
 
   const {
@@ -69,13 +55,32 @@ export default function ProfilePage() {
     absoluteAvatar_urlAuth,
   } = useAuth();
 
-  if (playSong == true) {
+  useEffect(() => {
+    if (!session) {
+      router.push("/login");
+      return;
+    }
+    if (session?.user.email === process.env.NEXT_PUBLIC_TEST_EMAIL) {
+      setTestMode(true);
+    }
+    if (searchParams?.get("error") === "no-username") {
+      usernameRef.current?.focus();
+      if (usernameRef.current) {
+        usernameRef.current.className = "border border-danger";
+        usernameRef.current.placeholder =
+          "enter a unique username to send a message";
+      }
+    }
+  }, [session, router, searchParams]);
+
+  if (playSong === true) {
     audio.play();
   }
-  if (playSong == false) {
+  if (playSong === false) {
     audio.pause();
   }
-  let size = "150px";
+
+  const size = "150px";
 
   function handleSubmit() {
     const values = {
@@ -194,7 +199,7 @@ export default function ProfilePage() {
               soundcloud_url,
             })
           }
-          disabled={isLoading || testMode == true}
+          disabled={isLoading || testMode === true}
         >
           {isLoading ? "Loading ..." : "Update"}
         </button>

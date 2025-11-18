@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
-import { supabase } from "../utils/supabaseClient";
-import { useRouter } from "next/router";
+'use client';
 
-export default function ForgotPassword() {
+import { useState } from "react";
+import { supabase } from "../../utils/supabaseClient";
+import { useRouter } from "next/navigation";
+
+export default function ForgotPasswordPage() {
   const router = useRouter();
-
   const [email, setEmail] = useState(null);
 
   const handleSubmit = async (e) => {
@@ -14,9 +15,8 @@ export default function ForgotPassword() {
 
       if (error) {
         throw error;
-      } else {
-        router.push("/profile");
       }
+      router.push("/profile");
     } catch (error) {
       console.log(error);
     }
@@ -27,9 +27,9 @@ export default function ForgotPassword() {
       <h1 className="header">
         We'll send you an email with a link to update your password. Hang tight!
       </h1>
-      <br></br>
-      <br></br>
-      <br></br>
+      <br />
+      <br />
+      <br />
       <p className="description">Reset Password</p>
       <form onSubmit={(e) => handleSubmit(e)}>
         <input

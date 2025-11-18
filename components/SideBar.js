@@ -1,13 +1,13 @@
-import Link from "next/link";
 import TrashIcon from "/components/TrashIcon";
 import { useRealtime } from "../contexts/RealTime";
 import { useAuth } from "../contexts/auth";
-import { useRouter } from "next/router";
+import { useRouter, usePathname } from "next/navigation";
 import { TiMessages } from "react-icons/ti";
 
 export default function SideBar(props) {
   const { deleteChannel, channels, channelId, setChannelId } = useRealtime();
   const router = useRouter();
+  const pathname = usePathname();
 
   const { session, userRoles } = useAuth();
 
@@ -21,9 +21,7 @@ export default function SideBar(props) {
   if (props.global == true) {
     function handleGoToMessages(id) {
       setChannelId(id);
-      const query = router.pathname;
-      console.log(query);
-      if (query != "/messages") {
+      if (pathname != "/messages") {
         router.push("/messages");
       }
     }

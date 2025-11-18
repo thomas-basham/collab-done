@@ -1,9 +1,8 @@
 import React, { useContext, useState, useEffect } from "react";
 import { supabase } from "../utils/supabaseClient";
-import { useRouter } from "next/router";
-import { Session } from "@supabase/gotrue-js/src/lib/types";
+import { useRouter } from "next/navigation";
 
-import { AuthResponse, OAuthResponse } from "@supabase/supabase-js";
+import { AuthResponse, OAuthResponse, Session } from "@supabase/supabase-js";
 import { get } from "http";
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
 interface AuthContextType {
@@ -505,5 +504,10 @@ export function AuthProvider({ children }) {
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+
+  return context;
 }

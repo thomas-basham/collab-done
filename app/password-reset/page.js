@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from "react";
-import { supabase } from "../utils/supabaseClient";
-import { useRouter } from "next/router";
-import { useAuth } from "../contexts/auth";
+'use client';
 
-export default function PasswordReset() {
+import { useState, useEffect } from "react";
+import { supabase } from "../../utils/supabaseClient";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../../contexts/auth";
+
+export default function PasswordResetPage() {
   const router = useRouter();
-
   const { session } = useAuth();
 
   const [password, setPassword] = useState(null);
@@ -13,17 +14,18 @@ export default function PasswordReset() {
   const [passwordError, setPasswordError] = useState(null);
 
   useEffect(() => {
-    if (password != passwordConfirmation) {
+    if (password !== passwordConfirmation) {
       setPasswordError("Passwords must match");
     } else {
       setPasswordError(null);
     }
-  });
+  }, [password, passwordConfirmation]);
+
   useEffect(() => {
     if (!session?.user) {
       router.push("/login");
     }
-  });
+  }, [session, router]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -35,9 +37,8 @@ export default function PasswordReset() {
 
       if (error) {
         throw error;
-      } else {
-        router.push("/profile");
       }
+      router.push("/profile");
     } catch (error) {
       console.log(error);
     }
@@ -63,12 +64,12 @@ export default function PasswordReset() {
           onChange={(e) => setPasswordConfirmation(e.target.value)}
         />
         <small>{passwordError}</small>
-        <br></br>
+        <br />
         <button
           className="col-12"
           disabled={
             passwordError ||
-            session?.user.email == process.env.NEXT_PUBLIC_TEST_EMAIL
+            session?.user?.email == process.env.NEXT_PUBLIC_TEST_EMAIL
           }
           type="submit"
         >

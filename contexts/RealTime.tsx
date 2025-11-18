@@ -181,7 +181,11 @@ export function RealTimeProvider({ children }: RealTimeProviderProps) {
 
   // New message received from Postgres
   useEffect(() => {
-    if (newMessage && incomingChannelId === channelId) {
+    if (
+      newMessage &&
+      incomingChannelId !== null &&
+      incomingChannelId === channelId
+    ) {
       fetchMessages(incomingChannelId);
 
       setMessages(messages.concat(newMessage));

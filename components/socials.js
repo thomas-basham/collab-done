@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { FiTwitter, FiInstagram } from "react-icons/fi";
 import { RiSpotifyLine } from "react-icons/ri";
 import { GrSoundcloud } from "react-icons/gr";
 import { useRealtime } from "../contexts/RealTime";
-import { useRouter } from "next/router";
+import { useRouter } from "next/navigation";
 
 export default function Socials({ data, currentUser, username }) {
   const router = useRouter();
@@ -32,18 +31,20 @@ export default function Socials({ data, currentUser, username }) {
         </button>
       )}
       {data && (
-        <Link href={`https://www.instagram.com/${data.instagram_url}`}>
-          <a target="blank" rel="noopener noreferrer">
-            <FiInstagram className="brand-hover" />
-          </a>
-        </Link>
+        <a
+          href={`https://www.instagram.com/${data.instagram_url}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <FiInstagram className="brand-hover" />
+        </a>
       )}
       <br></br>
 
       {data && (
         <a
           href={`https://twitter.com/${data.twitter_url}`}
-          target="blank"
+          target="_blank"
           rel="noopener noreferrer"
         >
           <FiTwitter className="brand-hover" />
@@ -54,7 +55,7 @@ export default function Socials({ data, currentUser, username }) {
       {data && (
         <a
           href={`https://open.spotify.com/artist/${data.spotify_url}`}
-          target="blank"
+          target="_blank"
           rel="noopener noreferrer"
         >
           <RiSpotifyLine className="brand-hover" />
@@ -64,7 +65,7 @@ export default function Socials({ data, currentUser, username }) {
 
       {data && (
         <a
-          target="blank"
+          target="_blank"
           href={`https://soundcloud.com/${data.soundcloud_url}`}
           rel="noopener noreferrer"
         >

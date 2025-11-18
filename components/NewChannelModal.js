@@ -1,14 +1,20 @@
 import Link from "next/link";
 import { Container, Modal } from "react-bootstrap";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRealtime } from "../contexts/RealTime";
 
 export default function NewChannelModal(props) {
   // the value of the search field
   const [name, setName] = useState("");
   // the search result. initially all users except logged in user
-  const [foundUsers, setFoundUsers] = useState(filteredProfiles);
- 
+  const filteredProfiles = useMemo(() => {
+    return props.allProfiles?.filter((user) => {
+      return user?.id != props.user?.id;
+    });
+  }, [props.allProfiles, props.user?.id]);
+
+  const [foundUsers, setFoundUsers] = useState(filteredProfiles || []);
+
   const {
     addChannel,
     deleteChannel,
@@ -20,9 +26,11 @@ export default function NewChannelModal(props) {
     addMessage,
   } = useRealtime();
 
-  let filteredProfiles = props.allProfiles?.filter((user) => {
-    return user?.id != props.user?.id;
-  });
+  useEffect(() => {
+    if (filteredProfiles) {
+      setFoundUsers(filteredProfiles);
+    }
+  }, [filteredProfiles]);
 
   const newChannel = async (channelName, user_id) => {
     if (channelName) {
@@ -49,7 +57,7 @@ export default function NewChannelModal(props) {
     const keyword = e.target.value;
 
     if (keyword) {
-      const results = filteredProfiles.filter((user) => {
+      const results = (filteredProfiles || []).filter((user) => {
         return (
           user.username != props.username &&
           user.username?.toLowerCase().startsWith(keyword.toLowerCase())
@@ -58,7 +66,7 @@ export default function NewChannelModal(props) {
       });
       setFoundUsers(results);
     } else {
-      setFoundUsers(filteredProfiles);
+      setFoundUsers(filteredProfiles || []);
       // If the text field is empty, show all users
     }
 

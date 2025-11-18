@@ -1,12 +1,9 @@
-import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { supabase } from "../utils/supabaseClient";
 import { useAuth } from "../contexts/auth";
 import { FaGithub, FaGoogle, FaSpotify } from "react-icons/fa";
 
 export default function Form() {
-  const router = useRouter();
   const { registerUser, errorMessageAuth, signInOauth } = useAuth();
 
   const [loading, setLoading] = useState(false);

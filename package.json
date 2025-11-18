@@ -13,7 +13,7 @@
     "@supabase/auth-helpers-react": "^0.3.0-next.4",
     "@supabase/supabase-js": "^2.0.0",
     "bootstrap": "^5.2.1",
-    "next": "12.3.0",
+    "next": "14.2.3",
     "react": "18.2.0",
     "react-bootstrap": "^2.5.0",
     "react-dom": "18.2.0",
@@ -22,9 +22,9 @@
     "wavesurfer.js": "^6.2.0"
   },
   "devDependencies": {
-    "@types/node": "^18.7.16",
-    "eslint": "8.23.0",
-    "eslint-config-next": "12.3.0",
-    "typescript": "4.8.3"
+    "@types/node": "^20.12.7",
+    "eslint": "8.57.0",
+    "eslint-config-next": "14.2.3",
+    "typescript": "5.4.5"
   }
 }
