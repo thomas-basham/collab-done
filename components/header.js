@@ -68,7 +68,7 @@ export default function Header({ session, signOut }) {
               </Nav.Link>
               <Nav.Link
                 className="d-flex align-items-center "
-                onClick={signOut()}
+                onClick={signOut}
               >
                 <FaSignOutAlt /> &nbsp; Sign Out
               </Nav.Link>

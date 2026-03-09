@@ -1,20 +1,27 @@
-import { supabase } from "../utils/supabaseClient";
-import { useAuth } from "../contexts/auth";
-// import { useRouter } from "next/router";
 import { useState } from "react";
+import { apiRequest } from "../utils/apiClient";
+import { useAuth } from "../contexts/auth";
 
 interface Song {
-  id: number;
-  genre: string;
+  id: string;
+  genre?: string;
+  description?: string;
+  needs?: string;
+  artist_id?: string;
+  artist?: string;
+  song_url?: string;
+  absolute_song_url?: string;
+  absolute_avatar_url?: string;
+  created_at?: string;
 }
 
 interface Comment {
-  id: number;
-  user: number;
+  id: string;
+  user: string;
   comment: string;
-  song_id: number;
+  song_id: string;
   commentPosition: number;
-  avatarUrl: string;
+  avatarURl?: string;
 }
 
 interface Profile {
@@ -28,30 +35,63 @@ interface Profile {
   twitter_url: string;
   spotify_url: string;
   soundcloud_url: string;
-  // status: string;
-  // updated_at: Date;
 }
-interface Socials {}
 
-interface PotentialCollaborator {}
+interface PotentialCollaborator {
+  id: string;
+  song_id: string;
+  user: string;
+  username: string;
+  absolute_avatar_url: string;
+}
+
+async function uploadWithSignedUrl(
+  kind: "songs" | "avatars",
+  file: File
+): Promise<{ key: string; publicUrl: string }> {
+  const signed = await apiRequest("/media/upload-url", {
+    method: "POST",
+    body: {
+      kind,
+      fileName: file.name,
+      contentType: file.type || "application/octet-stream",
+    },
+  });
+
+  const putResult = await fetch(signed.uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+    },
+    body: file,
+  });
+
+  if (!putResult.ok) {
+    throw new Error("Failed to upload file to S3");
+  }
+
+  return {
+    key: signed.key,
+    publicUrl: signed.publicUrl,
+  };
+}
 
 export default function useResource() {
-  // const router = useRouter();
   const { session } = useAuth();
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(false);
   const [musicPosts, setMusicPosts] = useState<Song[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [songUrl, setSongUrl] = useState<string | null>(null);
-  const [playSong, setPlaySong] = useState<boolean>(false);
-  const [audio, setAudio] = useState<HTMLAudioElement | null>(new Audio());
-  const [currentKey, setCurrentKey] = useState<number | null>(null);
-  const [socials, setSocials] = useState<[] | null>(null);
-  const [allAvatars, setAllAvatars] = useState<[] | null>(null);
+  const [playSong] = useState<boolean>(false);
+  const [audio] = useState<HTMLAudioElement | null>(new Audio());
+  const [currentKey] = useState<number | null>(null);
+  const [socials, setSocials] = useState<any>(null);
+  const [allAvatars] = useState<[] | null>(null);
   const [selectedPostKey, setSelectedPostKey] = useState<number>();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioUrl] = useState<string | null>(null);
   const [absoluteSongUrl, setAbsoluteSongUrl] = useState<string | null>(null);
   const [absoluteAvatar_url, setAbsoluteAvatar_Url] = useState<string | null>(
     null
@@ -69,33 +109,11 @@ export default function useResource() {
   async function getAllProfiles() {
     try {
       setLoading(true);
-
-      let { data, error, status } = await supabase.from("profiles").select("*");
-
-      if (error && status !== 406) {
-        throw error;
-      }
-
-      if (data) {
-        const profiles: Profile[] = data.map((profile: any) => ({
-          id: profile.id,
-          username: profile.username,
-          bio: profile.bio,
-          website: profile.website,
-          avatar_url: profile.avatar_url,
-          absolute_avatar_url: profile.absolute_avatar_url,
-          instagram_url: profile.instagram_url,
-          twitter_url: profile.twitter_url,
-          spotify_url: profile.spotify_url,
-          soundcloud_url: profile.soundcloud_url,
-        }));
-
-        setAllProfiles(profiles);
-        return data;
-      }
-    } catch (error) {
-      setErrorMessage(generalErrorMessage);
-      console.log(error.message);
+      const data = await apiRequest("/profiles");
+      setAllProfiles(data || []);
+      return data;
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
     } finally {
       setLoading(false);
     }
@@ -104,27 +122,16 @@ export default function useResource() {
   async function getMusicPosts() {
     try {
       setLoading(true);
-
-      let { data, error, status } = await supabase.from("songs").select("*");
-
-      if (error && status !== 406) {
-        throw error;
-      }
-
-      if (data) {
-        setMusicPosts(data as Song[]);
-      }
-    } catch (error) {
-      setErrorMessage(generalErrorMessage);
-      console.log(error.message);
+      const data = await apiRequest("/songs");
+      setMusicPosts(data || []);
+      return data;
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
     } finally {
       setLoading(false);
     }
   }
 
-  /**
-   * Upload an audio file to Supabase Storage
-   */
   async function uploadSong(event: React.ChangeEvent<HTMLInputElement>) {
     try {
       setUploading(true);
@@ -134,43 +141,32 @@ export default function useResource() {
       }
 
       const file = event.target.files[0];
-      const fileName = `${Date.now()}-${file.name}`;
+      const uploaded = await uploadWithSignedUrl("songs", file);
 
-      const { error: uploadError } = await supabase.storage
-        .from("songs")
-        .upload(fileName, file);
-
-      if (uploadError) {
-        throw uploadError;
-      }
-
-      setFileName(fileName);
-    } catch (error) {
-      setErrorMessage(error.message);
-      console.log(error.message);
+      setFileName(uploaded.key);
+      setSongUrl(uploaded.key);
+      setAbsoluteSongUrl(uploaded.publicUrl);
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
     } finally {
       setUploading(false);
     }
   }
 
-  /**
-   * Create a new song post
-   */
   async function createSongPost(song: Song) {
     try {
       setLoading(true);
-
-      const { error } = await supabase.from("songs").insert([song]);
-
-      if (error) {
-        throw error;
+      const created = await apiRequest("/songs", {
+        method: "POST",
+        body: song,
+      });
+      if (created) {
+        setMusicPosts((prev) => [created, ...prev]);
       }
-
-      // Refresh the music posts
-      await getMusicPosts();
-    } catch (error) {
-      setErrorMessage(generalErrorMessage);
-      console.log(error.message);
+      return created;
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -179,18 +175,12 @@ export default function useResource() {
   async function getComments() {
     try {
       setLoading(true);
-
-      let { data, error, status } = await supabase.from("comments").select("*");
-
-      if (error && status !== 406) {
-        throw error;
-      }
-      if (data) {
-        setComments(data as Comment[]);
-      }
-    } catch (error) {
-      setErrorMessage(generalErrorMessage);
-      console.log(error.message);
+      const data = await apiRequest("/comments");
+      setComments(data || []);
+      return data;
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -199,170 +189,141 @@ export default function useResource() {
   async function createComment(comment: Comment) {
     try {
       setLoading(true);
-
-      const { error } = await supabase.from("comments").insert([comment]);
-
-      if (error) {
-        throw error;
-      }
-
-      // Refresh the comments
+      await apiRequest(`/songs/${comment.song_id}/comments`, {
+        method: "POST",
+        body: comment,
+      });
       await getComments();
-    } catch (error) {
-      setErrorMessage(generalErrorMessage);
-      console.log(error.message);
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
     } finally {
       setLoading(false);
     }
   }
 
-  async function deleteComment(id: number) {
+  async function deleteComment(id: string) {
     try {
       setLoading(true);
-
-      const { error } = await supabase
-        .from("comments")
-        .delete()
-        .match({ id: id });
-
-      if (error) {
-        throw error;
+      const comment = comments.find((entry) => entry.id === id);
+      if (!comment) {
+        await getComments();
+        return;
       }
-
-      // Refresh the comments
+      await apiRequest(`/songs/${comment.song_id}/comments/${id}`, {
+        method: "DELETE",
+      });
       await getComments();
-    } catch (error) {
-      setErrorMessage(generalErrorMessage);
-      console.log(error.message);
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
     } finally {
       setLoading(false);
     }
   }
 
-  async function deleteSongPost(song: Song) {
+  async function deleteSongPost(songOrId: Song | string) {
     try {
       setLoading(true);
-
-      const { error } = await supabase
-        .from("songs")
-        .delete()
-        .match({ id: song.id });
-
-      if (error) {
-        throw error;
-      }
-
-      // Refresh the music posts
+      const songId = typeof songOrId === "string" ? songOrId : songOrId?.id;
+      if (!songId) return;
+      await apiRequest(`/songs/${songId}`, {
+        method: "DELETE",
+      });
       await getMusicPosts();
-    } catch (error) {
-      setErrorMessage(generalErrorMessage);
-      console.log(error.message);
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
     } finally {
       setLoading(false);
     }
   }
 
-  async function updateSongPost(song: Song) {
+  async function updateSongPost(
+    songOrValues: Song,
+    songIdFromArgs?: string
+  ): Promise<void> {
     try {
       setLoading(true);
-
-      const { error } = await supabase
-        .from("songs")
-        .update(song)
-        .match({ id: song.id });
-
-      if (error) {
-        throw error;
+      const songId = songIdFromArgs || songOrValues?.id;
+      if (!songId) {
+        throw new Error("Song id is required");
       }
-
-      // Refresh the music posts
+      await apiRequest(`/songs/${songId}`, {
+        method: "PUT",
+        body: songOrValues,
+      });
       await getMusicPosts();
-    } catch (error) {
-      setErrorMessage(generalErrorMessage);
-      console.log(error.message);
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
     } finally {
       setLoading(false);
     }
   }
 
-  async function addCollaborator(songId: number, collaboratorId: string) {
+  async function addCollaborator(songId: string, _collaboratorId?: string) {
     try {
       setLoading(true);
-
-      const { error } = await supabase
-        .from("potential_collaborators")
-        .upsert([{ song_id: songId, collaborator_id: collaboratorId }]);
-
-      if (error) {
-        throw error;
-      }
-    } catch (error) {
-      setErrorMessage(generalErrorMessage);
-      console.log(error.message);
+      await apiRequest(`/songs/${songId}/collaborators`, {
+        method: "POST",
+        body: {},
+      });
+      await getPotentialCollaborators(songId);
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
     } finally {
       setLoading(false);
     }
   }
 
-  async function removeCollaborator(songId: number, collaboratorId: string) {
+  async function removeCollaborator(songId: string, collaboratorId?: string) {
     try {
       setLoading(true);
-
-      const { error } = await supabase
-        .from("potential_collaborators")
-        .delete()
-        .match({ song_id: songId, collaborator_id: collaboratorId });
-
-      if (error) {
-        throw error;
+      const targetCollaboratorId = collaboratorId || session?.user?.id;
+      if (!targetCollaboratorId) {
+        return;
       }
-    } catch (error) {
-      setErrorMessage(generalErrorMessage);
-      console.log(error.message);
+      await apiRequest(
+        `/songs/${songId}/collaborators/${encodeURIComponent(
+          targetCollaboratorId
+        )}`,
+        {
+          method: "DELETE",
+        }
+      );
+      await getPotentialCollaborators(songId);
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
     } finally {
       setLoading(false);
     }
   }
 
-  async function getPotentialCollaborators(songId: number) {
+  async function getPotentialCollaborators(songId: string) {
     try {
       setLoading(true);
-
-      let { data, error, status } = await supabase
-        .from("potential_collaborators")
-        .select("*")
-        .eq("song_id", songId);
-
-      if (error && status !== 406) {
-        throw error;
-      }
-
-      if (data) {
-        setPotentialCollaborators(data);
-      }
-    } catch (error) {
-      setErrorMessage(generalErrorMessage);
-      console.log(error.message);
+      const data = await apiRequest(`/songs/${songId}/collaborators`);
+      setPotentialCollaborators(data || []);
+      return data;
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
+      return [];
     } finally {
       setLoading(false);
     }
+  }
+
+  async function getCollaborators(songId: string) {
+    return getPotentialCollaborators(songId);
   }
 
   async function updateProfile(profile: Profile) {
     try {
       setLoading(true);
-
-      const { error } = await supabase.from("profiles").upsert([profile]);
-
-      if (error) {
-        throw error;
-      }
-
-      // Refresh the socials
+      await apiRequest("/profiles", {
+        method: "PUT",
+        body: profile,
+      });
       await getProfile();
-    } catch (error) {
-      setErrorMessage(generalErrorMessage);
-      console.log(error.message);
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
     } finally {
       setLoading(false);
     }
@@ -371,99 +332,87 @@ export default function useResource() {
   async function getProfile() {
     try {
       setLoading(true);
-
-      let { data, error, status } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("user_id", session?.user.id)
-        .single();
-
-      if (error && status !== 406) {
-        throw error;
+      if (!session?.user?.id) {
+        return null;
       }
-
-      if (data) {
-        setSocials(data as []);
-      }
-    } catch (error) {
-      setErrorMessage(generalErrorMessage);
-      console.log(error.message);
+      const data = await apiRequest(`/profiles/${session.user.id}`);
+      setSocials(data || null);
+      return data;
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
+      return null;
     } finally {
       setLoading(false);
     }
   }
 
-  async function getProfileByID(id: number) {
+  async function getProfileByID(id: string) {
     try {
       setLoading(true);
-
-      let { data, error, status } = await supabase
-        .from("profiles")
-        // .select(`username, website, avatar_url`)
-        .select(`*`)
-        .eq("id", id)
-        .single();
-
-      if (error && status !== 406) {
-        throw error;
-      }
-
-      if (data) {
-        return data;
-      }
-    } catch (error) {
-      setErrorMessage(error.message);
-      console.log(error.message);
+      const data = await apiRequest(`/profiles/${id}`);
+      return data;
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
+      return null;
     } finally {
       setLoading(false);
     }
   }
 
-  async function downloadImage(path) {
-    try {
-      const { data, error } = await supabase.storage
-        .from("avatars")
-        .download(path);
-      if (error) {
-        throw error;
-      }
-      const url = URL.createObjectURL(data);
-      setAvatarUrl(url);
-    } catch (error) {
-      setErrorMessage(`Error downloading Audio File: , ${error.message}`);
-      console.log("Error downloading Audio File: ", error.message);
+  async function downloadImage(path: string) {
+    if (!path) {
+      return;
     }
+
+    if (path.startsWith("http://") || path.startsWith("https://")) {
+      setAvatarUrl(path);
+      return;
+    }
+
+    const mediaBaseUrl = process.env.NEXT_PUBLIC_MEDIA_BASE_URL;
+    if (mediaBaseUrl) {
+      setAvatarUrl(`${mediaBaseUrl.replace(/\/$/, "")}/${path}`);
+      return;
+    }
+
+    setAvatarUrl(path);
   }
-  /**
-   * Get socials link from profile id, and key
-   * @param {string} id
-   * @param {number} key key of the song post
-   */
-  async function getSocials(id, key) {
+
+  function getAbsoluteAvatarUrl(path: string) {
+    if (!path) {
+      return "";
+    }
+
+    if (path.startsWith("http://") || path.startsWith("https://")) {
+      return path;
+    }
+
+    const mediaBaseUrl = process.env.NEXT_PUBLIC_MEDIA_BASE_URL;
+    if (mediaBaseUrl) {
+      return `${mediaBaseUrl.replace(/\/$/, "")}/${path}`;
+    }
+
+    return path;
+  }
+
+  async function uploadAvatarFile(file: File) {
+    const uploaded = await uploadWithSignedUrl("avatars", file);
+    setAvatarUrl(uploaded.publicUrl);
+    setAbsoluteAvatar_Url(uploaded.publicUrl);
+    return uploaded;
+  }
+
+  async function getSocials(id: string, key: number) {
     try {
       setLoading(true);
-
-      let { data, error, status } = await supabase
-        .from("profiles")
-        // .select(`username, website, avatar_url`)
-        .select(`*`)
-        .eq("id", id)
-        .single();
-
-      if (error && status !== 406) {
-        throw error;
-      }
-
-      if (data) {
-        setSocials(data as []);
-        setSelectedPostKey(key);
-        setAvatarUrl(data.avatar_url);
-
-        return data;
-      }
-    } catch (error) {
-      setErrorMessage(generalErrorMessage);
-      console.log(error.message);
+      const data = await apiRequest(`/profiles/${id}`);
+      setSocials(data || null);
+      setSelectedPostKey(key);
+      setAvatarUrl(data?.avatar_url || data?.absolute_avatar_url || null);
+      return data;
+    } catch (error: any) {
+      setErrorMessage(error?.message || generalErrorMessage);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -471,6 +420,7 @@ export default function useResource() {
 
   return {
     errorMessage,
+    setErrorMessage,
     loading,
     musicPosts,
     comments,
@@ -485,10 +435,13 @@ export default function useResource() {
     avatarUrl,
     audioUrl,
     absoluteSongUrl,
+    setAbsoluteSongUrl,
     absoluteAvatar_url,
+    setAbsoluteAvatar_Url,
     potentialCollaborators,
     uploading,
     fileName,
+    setFileName,
     allProfiles,
     getAllProfiles,
     getMusicPosts,
@@ -502,11 +455,13 @@ export default function useResource() {
     addCollaborator,
     removeCollaborator,
     getPotentialCollaborators,
+    getCollaborators,
     updateProfile,
     getProfile,
-    // deleteProfile,
     getProfileByID,
     downloadImage,
     getSocials,
+    getAbsoluteAvatarUrl,
+    uploadAvatarFile,
   };
 }

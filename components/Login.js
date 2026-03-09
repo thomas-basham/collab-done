@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../contexts/auth";
-import { FaGithub, FaGoogle, FaSpotify } from "react-icons/fa";
+import { FaGithub, FaGoogle } from "react-icons/fa";
 export default function Login() {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
@@ -43,9 +43,6 @@ export default function Login() {
           </button>
         </div>
         <br></br>
-        <button className="col-2 " onClick={() => signInOauth("spotify")}>
-          <FaSpotify />
-        </button>
         <button className="col-2 " onClick={() => signInOauth("github")}>
           <FaGithub />
         </button>

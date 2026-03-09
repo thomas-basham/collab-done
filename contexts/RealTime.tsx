@@ -4,67 +4,66 @@ import {
   useContext,
   createContext,
   ReactNode,
+  useRef,
 } from "react";
-import { supabase } from "../utils/supabaseClient";
 import { useAuth } from "./auth";
-import {
-  RealtimePostgresChangesPayload,
-  RealtimeChannel,
-} from "@supabase/realtime-js";
+import { apiRequest, getWsUrl } from "../utils/apiClient";
+
 interface Message {
-  id: number;
-  channel_id: number;
+  id: string;
+  channel_id: string;
   message: string;
-  user_id: number;
+  user_id: string;
   username: string;
   absolute_avatar_url: string;
+  inserted_at?: string;
 }
 
 interface Channel {
-  id: number;
+  id: string;
   slug: string;
-  created_by: number;
+  created_by: string;
   message_to: string;
   created_by_username: string;
+  inserted_at?: string;
 }
 
 interface User {
-  id: number;
-  // Add properties for the user object
+  id: string;
 }
 
 interface MessageContextValue {
   messages: Message[];
   setMessages: (messages: Message[]) => void;
   channels: Channel[];
-  users: Map<number, User>;
-  channelId: number | null;
+  users: Map<string, User>;
+  channelId: string | null;
   addChannel: (
     slug: string,
-    user_id: number,
+    user_id: string,
     message_to: string,
     created_by_username: string
   ) => Promise<any>;
-  setChannelId: (channelId: number | null) => void;
+  setChannelId: (channelId: string | null) => void;
   fetchUserRoles: (setState?: any) => Promise<any>;
-  fetchMessages: (channel_id: number | null, setState?: any) => Promise<any>;
-  deleteChannel: (channel_id: number) => Promise<any>;
+  fetchMessages: (channel_id: string | null, setState?: any) => Promise<any>;
+  deleteChannel: (channel_id: string) => Promise<any>;
   addMessage: (
     message: string,
-    channel_id: number,
-    user_id: number,
+    channel_id: string,
+    user_id: string,
     username: string,
     absolute_avatar_url: string
   ) => Promise<any>;
   newMessage: Message | null;
-  deleteMessage: (message_id: number) => Promise<any>;
+  deleteMessage: (message_id: string) => Promise<any>;
 }
 
 const MessageContext = createContext<MessageContextValue>({
   messages: [],
   setMessages: () => {},
   channels: [],
-  users: new Map<number, User>(),
+  users: new Map<string, User>(),
   channelId: null,
   addChannel: async () => {},
   setChannelId: () => {},
@@ -81,330 +80,266 @@ interface RealTimeProviderProps {
 }
 
 export function RealTimeProvider({ children }: RealTimeProviderProps) {
-  // @ts-ignore
   const { session } = useAuth();
 
   const [channels, setChannels] = useState<Channel[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [users] = useState<Map<number, User>>(new Map());
-  const [newMessage, handleNewMessage] = useState<Message | null>(null);
-  const [newChannel, handleNewChannel] = useState<Channel | null>(null);
-  const [newOrUpdatedUser, handleNewOrUpdatedUser] = useState<User | null>(
-    null
-  );
-  const [deletedChannel, handleDeletedChannel] = useState<Channel | null>(null);
-  const [deletedMessage, handleDeletedMessage] = useState<Message | null>(null);
-  const [channelId, setChannelId] = useState<number | null>(null);
-  const [incomingChannelId, setIncomingChannelId] = useState<number | null>(
-    null
-  );
+  const [users] = useState<Map<string, User>>(new Map());
+  const [newMessage, setNewMessage] = useState<Message | null>(null);
+  const [channelId, setChannelId] = useState<string | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
-  // Load initial data and set up listeners
-  useEffect(() => {
-    // Get Channels
-    fetchChannels(setChannels);
-    // Listen for new and deleted messages
-    const messageListener: RealtimeChannel = supabase
-      .channel("public:messages")
-      .on<RealtimePostgresChangesPayload<{ channel_id: string }>>(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "messages" },
-        (payload) => {
-          // @ts-ignore
-          setIncomingChannelId(payload.new.channel_id);
-          handleNewMessage(payload.new as unknown as Message);
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "DELETE", schema: "public", table: "messages" },
-        (payload) => {
-          console.log(payload);
-          handleDeletedMessage(payload.old as Message);
-        }
-      )
-      .subscribe();
-
-    // Listen for changes to our users
-    const userListener = supabase
-      .channel("public:profiles")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "profiles" },
-        (payload) => {
-          console.log("PROFILES!", payload);
-
-          handleNewOrUpdatedUser(payload.new as User);
-        }
-      )
-      .subscribe();
-    // Listen for new and deleted channels
-    const channelListener = supabase
-      .channel("public:channels")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "channels" },
-        (payload) => {
-          console.log(payload);
-
-          handleNewChannel(payload.new as Channel);
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "DELETE", schema: "public", table: "channels" },
-        (payload) => {
-          console.log(payload);
-
-          handleDeletedChannel(payload.old as Channel);
-        }
-      )
-      .subscribe();
-    // Cleanup on unmount
-    return () => {
-      supabase.removeChannel(messageListener);
-      supabase.removeChannel(userListener);
-      supabase.removeChannel(channelListener);
-    };
-  }, []);
-
-  // Update when the route changes
-  useEffect(() => {
-    if (channelId !== null) {
-      const handleAsync = async () => {
-        await fetchMessages(channelId, setMessages);
-      };
-      handleAsync();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelId]);
-
-  // New message received from Postgres
-  useEffect(() => {
-    if (
-      newMessage &&
-      incomingChannelId !== null &&
-      incomingChannelId === channelId
-    ) {
-      fetchMessages(incomingChannelId);
-
-      setMessages(messages.concat(newMessage));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newMessage]);
-
-  // Deleted message received from postgres
-  useEffect(() => {
-    if (deletedMessage)
-      setMessages(
-        messages.filter((message) => message.id !== deletedMessage.id)
-      );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deletedMessage]);
-
-  // New channel received from Postgres
-  useEffect(() => {
-    if (newChannel) setChannels(channels.concat(newChannel));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newChannel]);
-
-  // Deleted channel received from postgres
-  useEffect(() => {
-    if (deletedChannel)
-      setChannels(
-        channels.filter((channel) => channel.id !== deletedChannel.id)
-      );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deletedChannel]);
-
-  // New or updated user received from Postgres
-  useEffect(() => {
-    if (newOrUpdatedUser) users.set(newOrUpdatedUser.id, newOrUpdatedUser);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newOrUpdatedUser]);
-
-  /**
-   * Fetch all channels
-   * @param {function} setState Optionally pass in a hook or callback to set the state
-   */
   const fetchChannels = async (setState?: any) => {
     try {
-      let { data } = await supabase.from("channels").select("*");
-      if (setState) setState(data);
+      const data = await apiRequest("/channels");
+      if (setState) setState(data || []);
+      else setChannels(data || []);
       return data;
     } catch (error) {
       console.log("error", error);
+      return [];
     }
   };
 
-  /**
-   * Fetch a single user
-   * @param {number} userId
-   * @param {function} setState Optionally pass in a hook or callback to set the state
-   */
-  const fetchUser = async (userId: number, setState?: any) => {
-    try {
-      let { data } = await supabase
-        .from("profiles")
-        .select(`*`)
-        .eq("id", userId);
-      if (data) {
-        let user = data[0];
-        if (setState) setState(user);
-        return user;
-      }
-    } catch (error) {
-      console.log("error", error);
-    }
-  };
-
-  /**
-   * Fetch all roles for the current user
-   * @param {function} setState Optionally pass in a hook or callback to set the state
-   */
   const fetchUserRoles = async (setState?: any) => {
     try {
-      let { data } = await supabase.from("user_roles").select(`*`);
-      if (setState) setState(data);
-      return data;
+      const data = await apiRequest("/me/roles");
+      if (setState) setState(data || []);
+      return data || [];
     } catch (error) {
       console.log("error", error);
+      return [];
     }
   };
 
-  /**
-   * Fetch all messages for given channel
-   * @param {number} channel_id
-   * @param {function} setState Optionally pass in a hook or callback to set the state
-   */
-  async function fetchMessages(channel_id: number, setState?: any) {
+  async function fetchMessages(channel_id: string | null, setState?: any) {
+    if (!channel_id) {
+      if (setState) setState([]);
+      else setMessages([]);
+      return [];
+    }
+
     try {
-      let { data, error, status } = await supabase
-        .from("messages")
-        .select(`*`)
-        .eq("channel_id", channel_id)
-        .order("inserted_at"); // , true
-
-      if (error && status !== 406) {
-        throw error;
-      }
-
-      if (data) {
-        setState(data);
-        console.log(data, "FETCH MESSAGES DATA");
-        // return data;
-      }
+      const data = await apiRequest(`/channels/${channel_id}/messages`);
+      if (setState) setState(data || []);
+      else setMessages(data || []);
+      return data || [];
     } catch (error) {
       console.log("error", error);
+      if (setState) setState([]);
+      else setMessages([]);
+      return [];
     }
   }
 
-  /**
-   * Insert a new channel into the DB with creator and receiver's id
-   * @param {string} slug The receiver's username
-   * @param {number} user_id The channel creator's id
-   * @param {string} message_to The receiver's id
-   * @param {string} created_by_username The channel creator's username
-   */
   const addChannel = async (
     slug: string,
-    user_id: number,
+    user_id: string,
     message_to: string,
     created_by_username: string
   ) => {
-    let filteredChannels = channels.filter(
-      (channel) =>
-        channel.message_to === session?.user?.id ||
-        // @ts-ignore
-        channel.created_by === session?.user?.id
-    );
-    let existingChannel = filteredChannels.filter(
-      (channel) =>
-        channel.message_to === message_to && channel.created_by === user_id
-    );
-    if (existingChannel.length < 1) {
-      try {
-        let { data } = await supabase
-          .from("channels")
-          .insert([
-            { slug, created_by: user_id, message_to, created_by_username },
-          ])
-          .select();
-        return data;
-      } catch (error) {
-        console.log("error", error);
+    try {
+      const channel = await apiRequest("/channels", {
+        method: "POST",
+        body: { slug, user_id, message_to, created_by_username },
+      });
+      await fetchChannels(setChannels);
+
+      if (channel?.id) {
+        setChannelId(channel.id);
+        return [channel];
       }
-    } else {
-      console.log({ existingChannel });
-      setChannelId(existingChannel[0]?.id);
+
+      return [];
+    } catch (error) {
+      console.log("error", error);
+      return [];
     }
   };
 
-  /**
-   * Insert a new message into the DB
-   * @param {string} message The message text
-   * @param {number} channel_id
-   * @param {number} user_id The author's id
-   * @param {string} username The author's username
-   * @param {string} absolute_avatar_url src of author's avatar
-   */
   const addMessage = async (
     message: string,
-    channel_id: number,
-    user_id: number,
+    channel_id: string,
+    _user_id: string,
     username: string,
     absolute_avatar_url: string
   ) => {
     try {
-      let { data } = await supabase
-        .from("messages")
-        .insert([
-          {
-            message,
-            channel_id,
-            user_id,
-            username,
-            absolute_avatar_url,
-          },
-        ])
-        .select();
-      return data;
+      const created = await apiRequest(`/channels/${channel_id}/messages`, {
+        method: "POST",
+        body: {
+          message,
+          username,
+          absolute_avatar_url,
+        },
+      });
+
+      setMessages((prev) => {
+        if (prev.some((entry) => entry.id === created.id)) {
+          return prev;
+        }
+        return prev.concat(created);
+      });
+
+      return [created];
     } catch (error) {
       console.log("error", error);
+      return [];
     }
   };
 
-  /**
-   * Delete a channel by id
-   * @param {number} channel_id
-   */
-  const deleteChannel = async (channel_id: number) => {
+  const deleteChannel = async (channel_id: string) => {
     try {
-      let { data } = await supabase
-        .from("channels")
-        .delete()
-        .eq("id", channel_id);
-      return data;
+      await apiRequest(`/channels/${channel_id}`, {
+        method: "DELETE",
+      });
+
+      if (channelId === channel_id) {
+        setChannelId(null);
+        setMessages([]);
+      }
+
+      await fetchChannels(setChannels);
+      return true;
     } catch (error) {
       console.log("error", error);
+      return false;
     }
   };
 
-  /**
-   * Delete a message by id
-   * @param {number} message_id
-   */
-  const deleteMessage = async (message_id: number) => {
+  const deleteMessage = async (message_id: string) => {
+    if (!channelId) {
+      return false;
+    }
+
     try {
-      let { data } = await supabase
-        .from("messages")
-        .delete()
-        .eq("id", message_id);
-      return data;
+      await apiRequest(`/channels/${channelId}/messages/${message_id}`, {
+        method: "DELETE",
+      });
+
+      setMessages((prev) => prev.filter((message) => message.id !== message_id));
+      return true;
     } catch (error) {
       console.log("error", error);
+      return false;
     }
   };
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setChannels([]);
+      setMessages([]);
+      setChannelId(null);
+      return;
+    }
+
+    fetchChannels(setChannels);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      return;
+    }
+
+    const wsUrl = getWsUrl(session.user.id);
+    if (!wsUrl) {
+      return;
+    }
+
+    const socket = new WebSocket(wsUrl);
+    wsRef.current = socket;
+
+    socket.onopen = () => {
+      if (channelId) {
+        socket.send(
+          JSON.stringify({
+            action: "subscribe",
+            channelId,
+          })
+        );
+      }
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+
+        if (payload?.type === "message.created") {
+          const incomingChannelId = payload.channelId;
+          const incomingMessage = payload.message as Message;
+
+          if (incomingChannelId === channelId) {
+            setMessages((prev) => {
+              if (prev.some((entry) => entry.id === incomingMessage.id)) {
+                return prev;
+              }
+              return prev.concat(incomingMessage);
+            });
+          }
+
+          setNewMessage(incomingMessage);
+        }
+
+        if (payload?.type === "message.deleted") {
+          const deletedMessageId = payload.messageId as string;
+          setMessages((prev) =>
+            prev.filter((message) => message.id !== deletedMessageId)
+          );
+        }
+
+        if (payload?.type === "channel.created") {
+          fetchChannels(setChannels);
+        }
+      } catch (_err) {
+        // Ignore malformed websocket payloads.
+      }
+    };
+
+    return () => {
+      socket.close();
+      if (wsRef.current === socket) {
+        wsRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!channelId) {
+      setMessages([]);
+      return;
+    }
+
+    fetchMessages(channelId, setMessages);
+
+    const socket = wsRef.current;
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(
+        JSON.stringify({
+          action: "subscribe",
+          channelId,
+        })
+      );
+    }
+
+    return () => {
+      const currentSocket = wsRef.current;
+      if (currentSocket?.readyState === WebSocket.OPEN && channelId) {
+        currentSocket.send(
+          JSON.stringify({
+            action: "unsubscribe",
+            channelId,
+          })
+        );
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId]);
 
   const value = {
     messages,

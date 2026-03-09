@@ -22,7 +22,8 @@ export default function CommentSection(props) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   useEffect(() => {
     getComments();
-  }, [comments]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onFormSubmit = async (e) => {
     e.preventDefault();

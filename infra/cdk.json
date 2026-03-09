@@ -1,0 +1,20 @@
+{
+  "app": "node bin/collab-done.js",
+  "context": {
+    "appName": "collab-done",
+    "region": "us-west-2",
+    "stage": "prod",
+    "cognitoDomainPrefix": "collab-done-auth",
+    "corsOrigins": [
+      "http://localhost:3000"
+    ],
+    "callbackUrls": [
+      "http://localhost:3000",
+      "https://localhost:3000"
+    ],
+    "logoutUrls": [
+      "http://localhost:3000",
+      "https://localhost:3000"
+    ]
+  }
+}

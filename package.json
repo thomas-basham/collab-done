@@ -6,12 +6,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "cdk:bootstrap": "cdk bootstrap -a \"node infra/bin/collab-done.js\"",
+    "cdk:synth": "cdk synth -a \"node infra/bin/collab-done.js\"",
+    "cdk:deploy": "cdk deploy -a \"node infra/bin/collab-done.js\""
   },
   "dependencies": {
-    "@supabase/auth-helpers-nextjs": "^0.4.0-next.4",
-    "@supabase/auth-helpers-react": "^0.3.0-next.4",
-    "@supabase/supabase-js": "^2.0.0",
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.860.0",
+    "@aws-sdk/client-dynamodb": "^3.860.0",
+    "@aws-sdk/client-s3": "^3.860.0",
+    "@aws-sdk/lib-dynamodb": "^3.860.0",
+    "@aws-sdk/s3-request-presigner": "^3.860.0",
+    "aws-amplify": "^6.6.5",
     "bootstrap": "^5.2.1",
     "next": "14.2.3",
     "react": "18.2.0",
@@ -23,6 +29,10 @@
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
+    "aws-cdk": "^2.161.1",
+    "aws-cdk-lib": "^2.161.1",
+    "constructs": "^10.3.0",
+    "esbuild": "^0.25.10",
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.3",
     "typescript": "5.4.5"

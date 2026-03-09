@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { Container } from "react-bootstrap";
+import { useRouter } from "next/navigation";
 import useResource from "../../hooks/useResource";
 import { useAuth } from "../../contexts/auth";
 
 export default function UploadSongPage() {
+  const router = useRouter();
   const { session, username, absoluteAvatar_urlAuth } = useAuth();
 
   const {
@@ -21,20 +23,41 @@ export default function UploadSongPage() {
   const [genre, setGenre] = useState("");
   const [description, setDescription] = useState("");
   const [needs, setNeeds] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
-  function handleSubmit() {
-    if ((genre, description, needs)) {
-      const values = {
-        artist: username,
-        artist_id: session.user.id,
-        genre,
-        description,
-        needs,
-        song_url: songUrl,
-        absolute_song_url: absoluteSongUrl,
-        absolute_avatar_url: absoluteAvatar_urlAuth,
-      };
-      createSongPost(values);
+  async function handleSubmit() {
+    if (!session?.user?.id) {
+      setSubmitError("You must be signed in to upload a song.");
+      return;
+    }
+
+    if (!genre.trim() || !description.trim() || !needs.trim()) {
+      setSubmitError("Genre, description, and needs are required.");
+      return;
+    }
+
+    setSubmitError("");
+    setIsSubmitting(true);
+
+    const values = {
+      artist: username,
+      artist_id: session.user.id,
+      genre: genre.trim(),
+      description: description.trim(),
+      needs: needs.trim(),
+      song_url: songUrl,
+      absolute_song_url: absoluteSongUrl,
+      absolute_avatar_url: absoluteAvatar_urlAuth,
+    };
+
+    const created = await createSongPost(values);
+    setIsSubmitting(false);
+
+    if (created) {
+      router.push("/");
+    } else {
+      setSubmitError("Could not publish the song right now. Please try again.");
     }
   }
   const size = 150;
@@ -43,7 +66,10 @@ export default function UploadSongPage() {
     if (!fileName) {
       return <div> UPLOAD A SONG TO START COLLABING </div>;
     }
-    return loading ? "Loading ..." : "Start Collabing";
+    if (uploading) {
+      return "Uploading file...";
+    }
+    return isSubmitting ? "Publishing..." : "Start Collabing";
   };
 
   return (
@@ -112,10 +138,13 @@ export default function UploadSongPage() {
 
           <div>
             <br />
+            {submitError && (
+              <small style={{ color: "red" }}>{submitError}</small>
+            )}
             <button
               className="button primary block"
               onClick={() => handleSubmit()}
-              disabled={loading || !fileName}
+              disabled={loading || isSubmitting || uploading || !fileName}
             >
               <ButtonText />
             </button>

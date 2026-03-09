@@ -4,6 +4,15 @@ module.exports = {
   reactStrictMode: false,
   swcMinify: true,
   images: {
-    domains: ["hkltergikayqbtqclwqv.supabase.co"],
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "*.amazonaws.com",
+      },
+      {
+        protocol: "https",
+        hostname: "**.amazonaws.com",
+      },
+    ],
   },
 };

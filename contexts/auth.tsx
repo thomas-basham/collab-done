@@ -1,19 +1,39 @@
-import React, { useContext, useState, useEffect } from "react";
-import { supabase } from "../utils/supabaseClient";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  fetchAuthSession,
+  getCurrentUser,
+  resetPassword,
+  confirmResetPassword,
+  resendSignUpCode,
+  signIn,
+  signInWithRedirect,
+  signOut,
+  signUp,
+} from "aws-amplify/auth";
+import { Hub } from "aws-amplify/utils";
+import { apiRequest } from "../utils/apiClient";
+import "../utils/amplifyConfig";
 
-import { AuthResponse, OAuthResponse, Session } from "@supabase/supabase-js";
-import { get } from "http";
-const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
-interface AuthContextType {
-  signUp: (data: { email: string; password: string }) => Promise<AuthResponse>;
-  signInOauth: (provider: string) => Promise<OAuthResponse>;
-  signOut: any;
+type AppSession = {
+  user: {
+    id: string;
+    email?: string;
+  };
+};
+
+type AuthContextType = {
+  signUp: (data: { email: string; password: string }) => Promise<any>;
+  signInOauth: (provider: string) => Promise<any>;
+  signOut: () => Promise<void>;
   errorMessageAuth: string | null;
   setErrorMessageAuth: React.Dispatch<React.SetStateAction<string | null>>;
-  registerUser: (email: string, password: string) => Promise<void>;
+  registerUser: (
+    email: string,
+    password: string
+  ) => Promise<{ success: boolean; message?: string }>;
   handleLogin: (email: string, password: string) => Promise<void>;
-  session: Session | null | undefined;
+  session: AppSession | null;
   getProfile: () => Promise<void>;
   username: string;
   setUsername: React.Dispatch<React.SetStateAction<string>>;
@@ -24,15 +44,15 @@ interface AuthContextType {
   avatar_url: string;
   setAvatarUrl: React.Dispatch<React.SetStateAction<string>>;
   updateProfile: (profile: {
-    username: string;
-    bio: string;
-    website: string;
-    avatar_url: string;
-    absolute_avatar_url: string;
-    instagram_url: string;
-    twitter_url: string;
-    spotify_url: string;
-    soundcloud_url: string;
+    username?: string;
+    bio?: string;
+    website?: string;
+    avatar_url?: string;
+    absolute_avatar_url?: string;
+    instagram_url?: string;
+    twitter_url?: string;
+    spotify_url?: string;
+    soundcloud_url?: string;
   }) => Promise<void>;
   isLoading: boolean;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -45,12 +65,57 @@ interface AuthContextType {
   soundcloud_url: string;
   setSoundcloud_url: React.Dispatch<React.SetStateAction<string>>;
   absoluteAvatar_urlAuth: string;
-  userRoles: null;
+  userRoles: string[];
+  requestPasswordReset: (email: string) => Promise<void>;
+  confirmPasswordReset: (
+    email: string,
+    confirmationCode: string,
+    newPassword: string
+  ) => Promise<void>;
+};
+
+const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
+
+function providerToCognito(provider: string): "Google" | { custom: string } {
+  const normalized = (provider || "").toLowerCase();
+  if (normalized === "google") {
+    return "Google";
+  }
+  if (normalized === "github") {
+    // Requires custom IdP wiring in Cognito (see infra warnings).
+    return { custom: "GitHub" };
+  }
+  return "Google";
 }
+
+async function buildSession(): Promise<AppSession | null> {
+  try {
+    const [authUser, authSession] = await Promise.all([
+      getCurrentUser(),
+      fetchAuthSession(),
+    ]);
+
+    const email =
+      (authSession?.tokens?.idToken?.payload?.email as string | undefined) ||
+      authUser?.signInDetails?.loginId;
+
+    return {
+      user: {
+        id: authUser.userId,
+        email,
+      },
+    };
+  } catch (_err) {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }) {
   const router = useRouter();
+
   const [errorMessageAuth, setErrorMessageAuth] = useState<string | null>(null);
-  const [session, setSession] = useState<Session | null>();
+  const [session, setSession] = useState<AppSession | null>(null);
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [username, setUsername] = useState<string>("");
   const [bio, setBio] = useState<string>("");
@@ -62,443 +127,288 @@ export function AuthProvider({ children }) {
   const [soundcloud_url, setSoundcloud_url] = useState<string>("");
   const [absoluteAvatar_urlAuth, setAbsoluteAvatar_UrlAuth] =
     useState<string>("");
+  const [userRoles, setUserRoles] = useState<string[]>([]);
 
-  const [userRoles, setUserRoles] = useState(null);
+  const generalErrorMessage = "There seems to be an error with our servers";
+
+  const applyProfileToState = (profile: any) => {
+    setUsername(profile?.username || "");
+    setWebsite(profile?.website || "");
+    setAvatarUrl(profile?.avatar_url || "");
+    setInstagram_url(profile?.instagram_url || "");
+    setTwitter_url(profile?.twitter_url || "");
+    setSpotify_url(profile?.spotify_url || "");
+    setSoundcloud_url(profile?.soundcloud_url || "");
+    setAbsoluteAvatar_UrlAuth(profile?.absolute_avatar_url || "");
+    setBio(profile?.bio || "");
+    setUserRoles(profile?.roles || ["user"]);
+  };
+
+  const fetchUserRoles = async () => {
+    try {
+      const roles = await apiRequest("/me/roles");
+      setUserRoles((roles || []).map((entry) => entry.role));
+    } catch (_err) {
+      setUserRoles(["user"]);
+    }
+  };
+
+  const getProfile = async () => {
+    if (!session?.user?.id) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const data = await apiRequest(`/profiles/${session.user.id}`);
+      if (!data) {
+        const created = await apiRequest("/profiles", {
+          method: "PUT",
+          body: {},
+        });
+        applyProfileToState(created);
+      } else {
+        applyProfileToState(data);
+      }
+      await fetchUserRoles();
+    } catch (error: any) {
+      setErrorMessageAuth(error?.message || generalErrorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
 
-    async function getInitialSession() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    const syncSession = async () => {
+      const nextSession = await buildSession();
+      if (!mounted) return;
 
-      // only update the react state if the component is still mounted
-      if (mounted) {
-        if (session) {
-          setSession(session);
-          signIn();
-        }
-
+      setSession(nextSession);
+      if (nextSession?.user?.id) {
+        await getProfile();
+      } else {
         setIsLoading(false);
       }
-    }
+      setIsInitialized(true);
+    };
 
-    getInitialSession();
+    syncSession();
 
-    const {
-      data: { subscription: authListener },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setSession(session);
-      const currentUser = session?.user;
-      if (currentUser) {
-        signIn();
+    const unsubscribe = Hub.listen("auth", async ({ payload }) => {
+      const event = payload?.event;
+      if (
+        event === "signedIn" ||
+        event === "signedOut" ||
+        event === "tokenRefresh" ||
+        event === "signInWithRedirect"
+      ) {
+        await syncSession();
       }
     });
-    const signIn = async () => {
-      await fetchUserRoles((userRoles) =>
-        setUserRoles(userRoles.map((userRole) => userRole.role))
-      );
-    };
+
     return () => {
       mounted = false;
-
-      // subscription?.unsubscribe();
-      authListener?.unsubscribe();
+      unsubscribe();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     getProfile();
-  }, [session]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id]);
 
-  const generalErrorMessage = "There seems to be an error with our servers";
-
-  const registerUser = async (email, password) => {
+  const registerUser = async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      const { data, error } = await supabase.auth.signUp({
-        email: email,
-        password: password,
+      setErrorMessageAuth(null);
 
+      await signUp({
+        username: email,
+        password,
         options: {
-          data: {
-            username: email,
+          userAttributes: {
+            email,
           },
         },
       });
-      if (error) throw error;
-    } catch (error) {
-      console.log(error);
-      setErrorMessageAuth(error.message || error.error_description);
+
+      return {
+        success: true,
+        message:
+          "Registration successful! Please check your email for the confirmation code before logging in.",
+      };
+    } catch (error: any) {
+      setErrorMessageAuth(error?.message || generalErrorMessage);
+      return { success: false };
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleLogin = async (email, password) => {
+  const handleLogin = async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+      setErrorMessageAuth(null);
+      await signIn({
+        username: email,
         password,
       });
+      router.push("/");
+    } catch (error: any) {
+      if (
+        error?.name === "UserNotConfirmedException" ||
+        error?.code === "UserNotConfirmedException"
+      ) {
+        try {
+          await resendSignUpCode({ username: email });
+        } catch (_resendError) {
+          // Ignore resend errors and continue with verification routing.
+        }
 
-      if (error) throw error;
-      if (data) router.push("/");
-    } catch (error) {
-      setErrorMessageAuth(error.message || error.error_description);
+        setErrorMessageAuth(
+          "Your account is not verified yet. Enter the verification code from your email."
+        );
+        router.push(`/signup?verify=1&email=${encodeURIComponent(email)}`);
+        return;
+      }
+
+      setErrorMessageAuth(error?.message || generalErrorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
-  async function getProfile() {
-    if (session) {
-      try {
-        setIsLoading(true);
-        const user = await getCurrentUser();
-        if (user) {
-          let { data, error, status } = await supabase
-            .from("profiles")
-            // .select(`username, website, avatar_url`)
-            .select(`*`)
-            .eq("id", user.id)
-            .single();
-          if (error && status !== 406) {
-            throw error;
-          }
-
-          if (data) {
-            setUsername(data.username);
-            setWebsite(data.website);
-            setAvatarUrl(data.avatar_url);
-            setInstagram_url(data.instagram_url);
-            setTwitter_url(data.twitter_url);
-            setSpotify_url(data.spotify_url);
-            setSoundcloud_url(data.soundcloud_url);
-            setAbsoluteAvatar_UrlAuth(data.absolute_avatar_url);
-            setBio(data.bio);
-            // return(data)
-          }
-        }
-      } catch (error) {
-        setErrorMessageAuth(generalErrorMessage);
-        console.log(error.message);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-  }
-
-  async function getCurrentUser() {
-    try {
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-
-      if (error) {
-        throw error;
-      }
-
-      if (!session?.user) {
-        router.push("/");
-
-        // throw new Error("User not logged in");
-      }
-      return session?.user;
-    } catch (error) {}
-  }
-
-  async function updateSongPost(values, id) {
+  const updateProfile = async (profile: {
+    username?: string;
+    bio?: string;
+    website?: string;
+    avatar_url?: string;
+    absolute_avatar_url?: string;
+    instagram_url?: string;
+    twitter_url?: string;
+    spotify_url?: string;
+    soundcloud_url?: string;
+  }) => {
     try {
       setIsLoading(true);
+      setErrorMessageAuth(null);
 
-      let { error } = await supabase
-        .from("songs")
-        .update(values)
-        .match({ id: id });
+      const data = await apiRequest("/profiles", {
+        method: "PUT",
+        body: profile,
+      });
 
-      if (error) {
-        throw error;
-      }
-    } catch (error) {
-      setErrorMessageAuth(generalErrorMessage);
-      console.log(error.message);
+      applyProfileToState(data);
+    } catch (error: any) {
+      setErrorMessageAuth(error?.message || generalErrorMessage);
     } finally {
       setIsLoading(false);
     }
-  }
-  async function updateComment(values, id) {
-    try {
-      setIsLoading(true);
+  };
 
-      let { error } = await supabase
-        .from("comments")
-        .update(values)
-        .match({ id: id });
+  const handleOauthSignIn = async (provider: string) => {
+    setErrorMessageAuth(null);
+    const cognitoProvider = providerToCognito(provider);
+    return signInWithRedirect({ provider: cognitoProvider });
+  };
 
-      if (error) {
-        throw error;
-      }
-    } catch (error) {
-      setErrorMessageAuth(generalErrorMessage);
-      console.log(error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function updatePotentialCollaborator(values, id) {
-    try {
-      setIsLoading(true);
-
-      let { error } = await supabase
-        .from("potentialCollaborators")
-        .update(values)
-        .match({ id: id });
-
-      if (error) {
-        throw error;
-      }
-    } catch (error) {
-      setErrorMessageAuth(generalErrorMessage);
-      console.log(error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function getCollaborators() {
-    try {
-      setIsLoading(true);
-
-      let { data, error, status } = await supabase
-        .from("potentialCollaborators")
-        .select("*");
-
-      if (error && status !== 406) {
-        throw error;
-      }
-
-      if (data) {
-        return data;
-      }
-    } catch (error) {
-      setErrorMessageAuth(generalErrorMessage);
-      console.log(error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-  async function getMusicPosts() {
-    try {
-      setIsLoading(true);
-
-      let { data, error, status } = await supabase.from("songs").select("*");
-
-      if (error && status !== 406) {
-        throw error;
-      }
-
-      if (data) {
-        return data;
-      }
-    } catch (error) {
-      setErrorMessageAuth(generalErrorMessage);
-      console.log(error.message);
-    } finally {
-      setIsLoading(true);
-      false;
-    }
-  }
-
-  async function getComments() {
-    try {
-      setIsLoading(true);
-
-      let { data, error, status } = await supabase.from("comments").select("*");
-
-      if (error && status !== 406) {
-        throw error;
-      }
-
-      if (data) {
-        return data;
-      }
-    } catch (error) {
-      setErrorMessageAuth(error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function updateProfile({
-    username,
-    bio,
-    website,
-    avatar_url,
-    absolute_avatar_url,
-    instagram_url,
-    twitter_url,
-    spotify_url,
-    soundcloud_url,
-  }) {
-    try {
-      setIsLoading(true);
-      const user = await getCurrentUser();
-
-      const updates = {
-        id: user?.id,
-        username,
-        bio,
-        website,
-        avatar_url,
-        absolute_avatar_url,
-        instagram_url,
-        twitter_url,
-        spotify_url,
-        soundcloud_url,
-        updated_at: new Date(),
-      };
-
-      let { error } = await supabase
-        .from("profiles")
-        .update(updates)
-        .eq("id", user?.id);
-
-      // UPDATE ALL MUSIC POSTS WITH USERNAME AND AVATAR URL
-
-      let collaborators = await getCollaborators();
-
-      let filteredCollabPosts = collaborators?.filter(
-        (post) => post.user === user?.id
-      );
-
-      const collabvalues = {
-        username,
-        absolute_avatar_url,
-      };
-      if (filteredCollabPosts) {
-        await Promise.all(
-          filteredCollabPosts.map(async (post) => {
-            return updatePotentialCollaborator(collabvalues, post.id);
-          })
-        );
-      }
-
-      // UPDATE ALL MUSIC POSTS WITH USERNAME AND AVATAR URL
-      let musicPosts = await getMusicPosts();
-
-      let filteredPosts = musicPosts?.filter(
-        (post) => post.artist_id === user?.id
-      );
-
-      const values = {
-        artist: username,
-        absolute_avatar_url,
-      };
-      if (filteredPosts) {
-        await Promise.all(
-          filteredPosts.map(async (post) => {
-            return updateSongPost(values, post.id);
-          })
-        );
-      }
-      // UPDATE ALL COMMENTS WITH USERNAME AND AVATAR URL
-      let comments = await getComments();
-
-      let filteredComments = comments?.filter(
-        (comment) => comment.user === user?.id
-      );
-
-      const commentValues = {
-        avatarURl: absolute_avatar_url,
-      };
-      if (filteredComments) {
-        await Promise.all(
-          filteredComments.map(async (post) => {
-            return updateComment(commentValues, post.id);
-          })
-        );
-      }
-      await getProfile();
-
-      // ERROR HANDLING
-      if (error) {
-        throw error;
-      }
-    } catch (error) {
-      setErrorMessageAuth(generalErrorMessage);
-      console.log(error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function signOut() {
-    // Ends user session
-    await supabase.auth.signOut();
+  const handleSignOut = async () => {
+    await signOut();
     setSession(null);
     setUsername("");
+    setBio("");
+    setWebsite("");
+    setAvatarUrl("");
+    setInstagram_url("");
+    setTwitter_url("");
+    setSpotify_url("");
+    setSoundcloud_url("");
+    setAbsoluteAvatar_UrlAuth("");
+    setUserRoles([]);
     router.push("/");
-  }
-
-  /**
-   * Fetch all roles for the current user
-   * @param {function} setState Optionally pass in a hook or callback to set the state
-   */
-  const fetchUserRoles = async (setState) => {
-    try {
-      let { data } = await supabase.from("user_roles").select(`*`);
-      if (setState) setState(data);
-      return data;
-    } catch (error) {
-      console.log("error", error);
-    }
   };
 
-  const value = {
-    signUp: (data: { email: string; password: string }) =>
-      supabase.auth.signUp(data),
-    signInOauth: async (provider) =>
-      await supabase.auth.signInWithOAuth({
-        provider,
-      }),
-    signOut: () => signOut,
-    errorMessageAuth,
-    setErrorMessageAuth,
-    registerUser,
-    handleLogin,
-    session,
-    getProfile,
-    username,
-    setUsername,
-    bio,
-    setBio,
-    website,
-    setWebsite,
-    avatar_url,
-    setAvatarUrl,
-    updateProfile,
-    isLoading,
-    setIsLoading,
-    instagram_url,
-    setInstagram_url,
-    twitter_url,
-    setTwitter_url,
-    spotify_url,
-    setSpotify_url,
-    soundcloud_url,
-    setSoundcloud_url,
-    absoluteAvatar_urlAuth,
-    userRoles,
+  const requestPasswordReset = async (email: string) => {
+    await resetPassword({ username: email });
   };
+
+  const confirmPasswordResetFlow = async (
+    email: string,
+    confirmationCode: string,
+    newPassword: string
+  ) => {
+    await confirmResetPassword({
+      username: email,
+      confirmationCode,
+      newPassword,
+    });
+  };
+
+  const value: AuthContextType = useMemo(
+    () => ({
+      signUp: ({ email, password }) =>
+        signUp({
+          username: email,
+          password,
+          options: {
+            userAttributes: { email },
+          },
+        }),
+      signInOauth: handleOauthSignIn,
+      signOut: handleSignOut,
+      errorMessageAuth,
+      setErrorMessageAuth,
+      registerUser,
+      handleLogin,
+      session,
+      getProfile,
+      username,
+      setUsername,
+      bio,
+      setBio,
+      website,
+      setWebsite,
+      avatar_url,
+      setAvatarUrl,
+      updateProfile,
+      isLoading,
+      setIsLoading,
+      instagram_url,
+      setInstagram_url,
+      twitter_url,
+      setTwitter_url,
+      spotify_url,
+      setSpotify_url,
+      soundcloud_url,
+      setSoundcloud_url,
+      absoluteAvatar_urlAuth,
+      userRoles,
+      requestPasswordReset,
+      confirmPasswordReset: confirmPasswordResetFlow,
+    }),
+    [
+      errorMessageAuth,
+      session,
+      username,
+      bio,
+      website,
+      avatar_url,
+      isLoading,
+      instagram_url,
+      twitter_url,
+      spotify_url,
+      soundcloud_url,
+      absoluteAvatar_urlAuth,
+      userRoles,
+    ]
+  );
 
   return (
     <AuthContext.Provider value={value}>
-      {!isLoading && children}
+      {isInitialized ? children : null}
     </AuthContext.Provider>
   );
 }

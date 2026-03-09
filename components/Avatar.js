@@ -1,22 +1,29 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../utils/supabaseClient";
-import useResource from "../hooks/useResource";
 import Image from "next/image";
+import useResource from "../hooks/useResource";
 import { useAuth } from "../contexts/auth";
+
 export default function Avatar({ url, size, profilePage, testMode }) {
   const [uploading, setUploading] = useState(false);
-  const { downloadImage, avatarUrl, getAbsoluteAvatarUrl } = useResource();
+  const { downloadImage, avatarUrl, uploadAvatarFile } = useResource();
   const { setAvatarUrl, updateProfile } = useAuth();
+  const parsedSize =
+    typeof size === "number" ? size : Number.parseInt(String(size), 10);
+  const avatarSize = Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : 150;
+
   useEffect(() => {
-    if (url) downloadImage(url);
+    if (url) {
+      downloadImage(url);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
-  const onUpload = (url, absoluteAvatar_url) => {
-    setAvatarUrl(url);
+  const onUpload = (publicUrl) => {
+    setAvatarUrl(publicUrl);
     updateProfile({
-      avatar_url: url,
-      absolute_avatar_url: absoluteAvatar_url,
-    }); // username, website,
+      avatar_url: publicUrl,
+      absolute_avatar_url: publicUrl,
+    });
   };
 
   async function uploadAvatar(event) {
@@ -28,20 +35,8 @@ export default function Avatar({ url, size, profilePage, testMode }) {
       }
 
       const file = event.target.files[0];
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${Math.random()}.${fileExt}`;
-      const filePath = `${fileName}`;
-
-      let { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(filePath, file);
-
-      if (uploadError) {
-        throw uploadError;
-      }
-      const absoluteUrl = await getAbsoluteAvatarUrl(filePath);
-
-      onUpload(filePath, absoluteUrl);
+      const uploaded = await uploadAvatarFile(file);
+      onUpload(uploaded.publicUrl);
     } catch (error) {
       alert(error.message);
     } finally {
@@ -53,21 +48,21 @@ export default function Avatar({ url, size, profilePage, testMode }) {
     <div>
       {avatarUrl ? (
         <Image
-          width={size}
-          height={size}
+          width={avatarSize}
+          height={avatarSize}
           src={avatarUrl}
           alt="Avatar"
           className="avatar image"
-          style={{ height: size, width: size, padding: 0 }}
+          style={{ height: avatarSize, width: avatarSize, padding: 0 }}
         />
       ) : (
         <div
           className="avatar no-image"
-          style={{ height: size, width: size }}
+          style={{ height: avatarSize, width: avatarSize }}
         />
       )}
       {profilePage && (
-        <div style={{ width: size }}>
+        <div style={{ width: avatarSize }}>
           <label className="button primary block" htmlFor="single">
             {uploading ? "Uploading ..." : "Upload"}
           </label>

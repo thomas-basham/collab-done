@@ -80,7 +80,7 @@ export default function ProfilePage() {
     audio.pause();
   }
 
-  const size = "150px";
+  const size = 150;
 
   function handleSubmit() {
     const values = {
@@ -206,7 +206,7 @@ export default function ProfilePage() {
       </div>
 
       <div>
-        <button className="button block" onClick={signOut()}>
+        <button className="button block" onClick={signOut}>
           Sign Out
         </button>
       </div>

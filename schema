@@ -1,90 +1,88 @@
-create table comments (
-  id bigint not null primary key,
-  created_at timestamp default now(),
-  "user" uuid,
-  comment text not null,
-  song_id bigint,
-  commentPosition double not null,
-  avatarURl text
-);
+# DynamoDB Single-Table Schema (AWS Refactor)
 
-create table role_permissions (
-  id bigint not null primary key,
-  role public.app_role not null,
-  permission public.app_permission not null
-);
+Table: collab-done-single-table
+Primary key:
+- pk (string)
+- sk (string)
 
-create table profiles (
-  id uuid default uuid_generate_v4() primary key,
-  updated_at timestamp default now(),
-  username text,
-  avatar_url text,
-  website text,
-  instagram_url text,
-  twitter_url text,
-  spotify_url text,
-  soundcloud_url text,
-  absolute_avatar_url text,
-  bio text,
-  status public.user_status
-);
+Global secondary indexes:
+- GSI1: gsi1pk, gsi1sk
+- GSI2: gsi2pk, gsi2sk
 
-create table users (
-  id uuid default uuid_generate_v4() primary key,
-  username text,
-  status public.user_status
-);
+Entity: PROFILE
+- pk: USER#{userId}
+- sk: PROFILE
+- entityType: PROFILE
+- gsi1pk: PROFILE
+- gsi1sk: {usernameLower}#{userId}
+- attributes: username, bio, website, avatar_url, absolute_avatar_url, instagram_url, twitter_url, spotify_url, soundcloud_url, roles
 
-create table channels (
-  id bigint not null primary key,
-  inserted_at timestamp default now() not null,
-  slug text references profiles (username),
-  created_by uuid references profiles (id),
-  message_to uuid references profiles (id),
-  created_by_username text
-);
+Entity: SONG
+- pk: SONG#{songId}
+- sk: METADATA
+- entityType: SONG
+- gsi1pk: SONG_FEED
+- gsi1sk: {createdAt}
+- gsi2pk: USER#{artistId}
+- gsi2sk: SONG#{createdAt}#{songId}
+- attributes: artist, artist_id, genre, needs, description, song_url, absolute_song_url, absolute_avatar_url
 
-create table messages (
-  id bigint not null primary key,
-  inserted_at timestamp default now() not null,
-  message text,
-  user_id uuid,
-  channel_id bigint references channels (id),
-  username text,
-  absolute_avatar_url text
-);
+Entity: COMMENT
+- pk: SONG#{songId}
+- sk: COMMENT#{createdAt}#{commentId}
+- entityType: COMMENT
+- gsi1pk: COMMENTS_FEED
+- gsi1sk: {createdAt}
+- gsi2pk: USER#{userId}
+- gsi2sk: COMMENT#{createdAt}#{commentId}
+- attributes: user, comment, commentPosition, avatarURl
 
-create table user_roles (
-  id bigint not null primary key,
-  user_id uuid references profiles (id),
-  role public.app_role not null
-);
+Entity: COLLAB_REQUEST
+- pk: SONG#{songId}
+- sk: COLLAB#{userId}
+- entityType: COLLAB_REQUEST
+- gsi2pk: USER#{userId}
+- gsi2sk: COLLAB#{songId}
+- attributes: username, absolute_avatar_url, added_at
 
-create table potentialCollaborators (
-  id bigint not null primary key,
-  added_at timestamp default now(),
-  song_id bigint,
-  "user" uuid references profiles (id),
-  username text,
-  absolute_avatar_url text
-);
+Entity: CHANNEL
+- pk: CHANNEL#{channelId}
+- sk: META
+- entityType: CHANNEL
+- attributes: created_by, message_to, slug, created_by_username, pairKey
 
-create table songs (
-  id bigint not null primary key,
-  created_at timestamp default now(),
-  genre text not null,
-  description text,
-  needs text not null,
-  open boolean not null,
-  finished_song text,
-  artist text,
-  artist_id uuid,
-  song_url text,
-  instagram_url text,
-  twitter_url text,
-  spotify_url text,
-  soundcloud_url text,
-  absolute_song_url text,
-  absolute_avatar_url text
-);
+Entity: CHANNEL_MEMBER
+- pk: USER#{userId}
+- sk: CHANNEL#{channelId}
+- entityType: CHANNEL_MEMBER
+- attributes: channelId, updatedAt
 
+Entity: CHANNEL_PAIR
+- pk: PAIR#{sortedUserA#sortedUserB}
+- sk: CHANNEL
+- entityType: CHANNEL_PAIR
+- attributes: channelId
+
+Entity: MESSAGE
+- pk: CHANNEL#{channelId}
+- sk: MSG#{insertedAt}#{messageId}
+- entityType: MESSAGE
+- gsi2pk: USER#{userId}
+- gsi2sk: MESSAGE#{insertedAt}#{messageId}
+- attributes: message, user_id, username, absolute_avatar_url
+
+Entity: WS_CONNECTION
+- pk: CONN#{connectionId}
+- sk: META
+- entityType: WS_CONNECTION
+- gsi2pk: CONN#{connectionId}
+- gsi2sk: META
+- attributes: userId, connectedAt
+
+Entity: WS_SUB
+- pk: CHANNEL#{channelId}
+- sk: CONN#{connectionId}
+- entityType: WS_SUB
+- gsi2pk: CONN#{connectionId}
+- gsi2sk: CHANNEL#{channelId}
+- attributes: connectionId, channelId
