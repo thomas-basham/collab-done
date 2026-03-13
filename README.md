@@ -1,11 +1,15 @@
 # Collab-done
 
 ## Author
+
 Thomas Basham
+
+**Deployed Site:** [https://main.d16s25vn4ji4zn.amplifyapp.com](https://main.d16s25vn4ji4zn.amplifyapp.com)
 
 A social collaboration app for musicians, refactored to AWS.
 
 ## AWS Architecture
+
 - Frontend: Next.js (deployable to AWS Amplify Hosting)
 - Auth: Amazon Cognito User Pool (email/password + Google Hosted UI)
 - API: API Gateway HTTP API + Lambda (`infra/lambda/http-handler.js`)
@@ -15,6 +19,7 @@ A social collaboration app for musicians, refactored to AWS.
 - Infrastructure: AWS CDK (`infra/`)
 
 ## Repository Layout
+
 - `infra/bin/collab-done.js`: CDK app entry
 - `infra/lib/collab-done-stack.js`: AWS stack resources
 - `infra/lambda/`: backend Lambda handlers
@@ -24,17 +29,21 @@ A social collaboration app for musicians, refactored to AWS.
 - `schema`: DynamoDB single-table schema reference
 
 ## Prerequisites
+
 - Node.js 20+
 - AWS CLI configured
 - CDK bootstrap completed in target account/region
 
 ## Install
+
 ```bash
 npm install
 ```
 
 ## Local Environment
+
 Create `.env.local` with:
+
 ```bash
 NEXT_PUBLIC_API_BASE_URL=https://your-http-api-id.execute-api.us-west-2.amazonaws.com
 NEXT_PUBLIC_WS_URL=wss://your-ws-api-id.execute-api.us-west-2.amazonaws.com/prod
@@ -48,7 +57,9 @@ NEXT_PUBLIC_TEST_EMAIL=test@example.com
 ```
 
 ## CDK Deploy
+
 Use your IAM profile and region:
+
 ```bash
 npm run cdk:bootstrap -- --profile iamadmin --context region=us-west-2
 npm run cdk:deploy -- --profile iamadmin --context region=us-west-2
@@ -57,16 +68,19 @@ npm run cdk:deploy -- --profile iamadmin --context region=us-west-2
 After deployment, copy stack outputs into `.env.local`.
 
 ## Development
+
 ```bash
 npm run dev
 ```
 
 ## Build
+
 ```bash
 npm run build
 ```
 
 ## Notes
+
 - Google social login is supported when `googleClientId` and `googleClientSecret` are provided to CDK.
 - GitHub is not a native Cognito social provider in this stack. It requires a custom OIDC/SAML broker setup and additional Cognito IdP wiring.
 - This refactor starts from a clean DynamoDB dataset (no SQL migration path included).
