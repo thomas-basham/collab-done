@@ -6,7 +6,7 @@ Thomas Basham
 
 **Deployed Site:** [https://main.d16s25vn4ji4zn.amplifyapp.com](https://main.d16s25vn4ji4zn.amplifyapp.com)
 
-A social collaboration app for musicians, refactored to AWS.
+A social collaboration app for musicians, hosted with AWS.
 
 ## AWS Architecture
 
@@ -92,4 +92,3 @@ npm run build
 
 - Google social login is supported when `googleClientId` and `googleClientSecret` are provided to CDK.
 - GitHub is not a native Cognito social provider in this stack. It requires a custom OIDC/SAML broker setup and additional Cognito IdP wiring.
-- This refactor starts from a clean DynamoDB dataset (no SQL migration path included).
