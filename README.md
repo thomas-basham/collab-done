@@ -79,6 +79,15 @@ npm run dev
 npm run build
 ```
 
+## Screenshots
+
+![Collab Done screenshot 1](./public/snapShots/collabDone00.png)
+![Collab Done screenshot 2](./public/snapShots/collabDone01.png)
+![Collab Done screenshot 3](./public/snapShots/collabDone02.png)
+![Collab Done screenshot 4](./public/snapShots/collabDone05.png)
+![Collab Done screenshot 5](./public/snapShots/collabDone03.png)
+![Collab Done screenshot 6](./public/snapShots/collabDone04.png)
+
 ## Notes
 
 - Google social login is supported when `googleClientId` and `googleClientSecret` are provided to CDK.
